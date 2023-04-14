@@ -31,17 +31,17 @@ class Genius:
             chroma_db_impl="duckdb+parquet",
             anonymized_telemetry=False
         ))
-        self.collection = self.create_collection(client=self.client, collection=collection)
+        self.collection = self._create_collection(client=self.client, name=collection)
 
     @classmethod
-    def create_collection(cls, client: chromadb.Client, embedding_function: EmbeddingFunction = None,
-                          collection: str = None):
-        if collection:
-            return client.get_collection(name=f"{collection}",
-                                         embedding_function=embedding_function or openai_ef)
-        else:
-            return client.create_collection(name="video_library",
-                                            embedding_function=embedding_function or openai_ef)
+    def _create_collection(cls, client: chromadb.Client, embedding_function: EmbeddingFunction = openai_ef, name: str = None):
+        try:
+            return client.get_collection(name=name or "video_libary",
+                                         embedding_function=embedding_function)
+        except Exception as e:
+            print(e)
+            return client.create_collection(name=name or "video_libary",
+                                            embedding_function=embedding_function)
 
     def add_document(self, docments: List[str], metadatas: List[Dict[str, str]], ids: List[str],
                      embeddings: List[List[float]] = None):
@@ -99,6 +99,9 @@ class Genius:
 
     @staticmethod
     def text_split(documents: TextLoader):
+        """
+        Splits merged transcription into
+        """
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
         texts = text_splitter.split_documents(documents)
         return texts
@@ -110,6 +113,9 @@ class Genius:
 
     @staticmethod
     def chunk_transcribe_video(video_url: str) -> Tuple[List[Dict[str, str]], StrPath]:
+        """
+        Chunks video and transcribes it, returns the transcriped chunks and the merged transcription
+        """
         video = Video(video_url).download()
         chunks = video.chunks()
         transcriptions = video.transcribe(chunks)
@@ -118,45 +124,31 @@ class Genius:
 
     @staticmethod
     def genius(text_path: StrPath, question: str):
+        """
+        Deals with the question answering part upon the whole video transcript
+        """
         loader = TextLoader(text_path)
         documents = loader.load()
         texts = Genius.text_split(documents)
         embeddings = OpenAIEmbeddings()
-        vectordb = embeddings(texts)
+        vectordb = Chroma.from_documents(texts, embeddings)
         answer = VectorDBQA.from_chain_type(llm=OpenAI(), chain_type="stuff", vectorstore=vectordb)
         return answer.run(question)
 
 
 if __name__ == "__main__":
     genius = Genius(collection="video_library")
-    # genius.create_collection()
 
-    print(genius.collection.get(ids=[str(i) for i in range(9999)],
-        include=["documents"]))
+    chunks_merged = genius.index_chunks("https://www.youtube.com/watch?v=1BXO2FGcMjc&ab_channel=OtherPeople%27sComputer")
 
-    chunks_merged = genius.index_chunks("https://www.youtube.com/watch?v=ZZIR1NGwy-s&ab_channel=BeyondFireship")
-    query = "How to make my pagespeed perfect?"
-    res = genius.query(n_results=2, query_texts=[query])
+    query_video_chunks = "requirements and path to get SRE"
+    query_merged_transcript = "Whats the prerequisites to get SRE? What is the described path to get SRE?"
+    res = genius.query(n_results=10, query_texts=[query_video_chunks])
     print(res)
     print("----*"*90)
     print("Your genius is ready to serve you!\n")
-    print(f"You should watch from this minute: {int(res['metadatas'][0][0]['sec'])/60} and this minute: {int(res['metadatas'][0][1]['sec'])/60}")
-    print(genius.genius(chunks_merged, query))
-
-
-    """Not relevant now"""
-
-    # vectors = genius.query(n_results=2, query_texts=["Code of conduct"])
-    # res = {"document": vectors["documents"],
-    #        "mins": vectors["metadatas"]}
-    # res = {'ids': [['9520992337', '7902261223']], 'embeddings': None, 'documents': [[
-    #                                                                                     "And so you think weed is legal in this country? I guess so, yeah. You guess so? Is it not? I don't know. Well, you're going to have to watch this video to find out. Stay tuned. Why are there so many weed and cannabis shops in Prague, Czech Republic? Well, the very short answer is because there's a lot of tourists here. What do you guys think about the cannabis shops here? Have you seen a few? We literally just landed. You just landed. 20 minutes ago, first time here. I don't know what the law is or anything like that. You don't know what the law is? We weren't anticipating there were anything like this. Oh, you weren't anticipating. Okay, okay. We're more curious to what is illegal in this country. Well, does it seem that it would be illegal or not? It certainly does. It certainly does. It gives the Amsterdam vibes. It gives the Amsterdam vibes. Come on in and you know. Now, the question that obviously pops in your head is, is weed legal in this country? Well, the answer to it is not just yes and no. It's a bit more complicated than that and we'll get to it throughout the video. But let's first look at how these stores actually target towards their customers. Usually, they target.",
-    #                                                                                     "You're buying? No? Get out. Remember this store? We already mentioned it. It has a one-star review on Google. Now I know why. Now the following two stores caught our eye for different reasons. One had the Comic Sans written sign that said marijuana and the other one seemed quite welcoming and had the sign THC on it, which is quite important for this part. So I walked in and I asked if they sell wheat that contains THC. This is what they said. You have THC wheat? 20%? So it's legal here? It's not? Oh, nobody cares? So how can you sell it? You have the license? You have license? Oh. So, but can I smoke it on the street? Nobody cares. Is this as good? Wow, it smells good. It's THC? THC."]],
-    #        'metadatas': [[{'min': 0}, {'min': 4}]], 'distances': [[0.315494567155838, 0.32840782403945923]]}
-    #
-    # for k, v in res.items():
-    #     position = ["document"].find(query)
-    #     if position != -1:
-    #         print(f'The substring appears at position {position} {len(i.split())} in the string.')
-    #     else:
-    #         print(f'does not appear')
+    print(f"You should watch from this minute:")
+    for i in range(len(res['metadatas'][0])):
+        print(f"{int(res['metadatas'][0][i]['sec'])/60})")
+    print("----*" * 90)
+    print(genius.genius(chunks_merged, query_merged_transcript))

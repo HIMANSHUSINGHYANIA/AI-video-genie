@@ -130,3 +130,6 @@ dmypy.json
 src/chroma_db
 .DS_Store
 .idea
+chunks/
+files/
+transcript/

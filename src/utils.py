@@ -9,6 +9,9 @@ import openai
 
 
 class Video:
+    """
+    Wrapper of the pytube library for the specific use case of the project
+    """
     def __init__(self, url: str):
         self.url = url
         self.yt = YouTube(url)
@@ -22,7 +25,7 @@ class Video:
         self.video = self.stream.first().download(output_path=self.output_dir)
         return self
 
-    def chunks(self, chunk_duration_in_sec: int = 20):
+    def chunks(self, chunk_duration_in_sec: int = 30):
         chunks = []
         if not os.path.exists(self.chunks_dir):
             os.makedirs(self.chunks_dir)
@@ -41,7 +44,7 @@ class Video:
 
             # Change path to chunks
             filename = f"{self.video}-{i}.mp4".replace('/files/', '/chunks/')
-            chunk.write_videofile(filename, codec="libx264")
+            chunk.write_videofile(filename, threads=4, codec="libx264", logger=None)
             chunks.append(filename)
 
         video_clip.close()
@@ -60,9 +63,9 @@ class Video:
                 f.write(transcript["text"])
                 f.close()
 
-                # we split to 20 seconds batches
+                # we split to 30 seconds batches
                 transcripts.append({"path": f"{path}.txt".replace('chunks', 'transcript'),
-                                    "min": {"sec": sec * 20},
+                                    "min": {"sec": sec * 30},
                                     "transcript": transcript["text"], "id": str(random.randint(0, 9999999999))})
         return transcripts
 
@@ -78,17 +81,6 @@ class Video:
             f.write(full_doc)
             f.close()
         return f"transcript/{name}-full.txt"
-
-class AI:
-    def __init__(self):
-        pass
-
-    def transcribe(self):
-        pass
-
-    def embedd(self):
-        pass
-
 
 if __name__ == "__main__":
     video = Video("https://www.youtube.com/watch?v=nQ2A30cD3Q8&t=15s&ab_channel=Fireship")
